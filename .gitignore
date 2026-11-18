@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.tmp/
+.uv-packager/
+build/
+dist/
+*.exe
+*.spec
+settings.json
+py简洁打包配置.json
+项目打包配置/
