@@ -11,7 +11,16 @@ Windows 下的 Python 图形化打包工具：用 `uv` 在干净的隔离环境�
 
 ## 快速开始
 
-需要 **Windows 10/11** 和 **Python 3.10+**（含 Tkinter）。
+### 方式一：直接下载 EXE（推荐）
+
+前往 [Releases](https://github.com/bvb6417/simple-packager/releases) 页面下载打包好的可执行文件：
+
+- **`SimplePackager-v2.7.0-standalone.exe`**（独立版，约 11.3 MB）：内置 Python 与 `tkwebui`，无需配置 Python 环境，下载双击即可运行。
+- **`SimplePackager-v2.7.0-launcher-source.exe`**（启动器外置资源版，约 136 KB）：内置项目全部 Python 源码，调用本机 PATH 中的 `python.exe` 运行（需本机已执行 `python -m pip install tkwebui>=0.3.2`）。
+
+### 方式二：从源码运行
+
+需要 **Windows 10/11** 和 **Python 3.10+**（含 Tkinter）：
 
 ```powershell
 git clone https://github.com/bvb6417/simple-packager.git
@@ -19,8 +28,6 @@ cd simple-packager
 python -m pip install -r runtime-requirements.txt
 python main.py
 ```
-
-不想用 Git 的话，可以直接点页面上的 **Code → Download ZIP**（或从 [Releases](https://github.com/bvb6417/simple-packager/releases) 下载源码包），解压后装完依赖双击 `main.py` 即可。
 
 > 使用独立打包模式需要 `uv`；本机没装的话，打开界面后直接点 `uv` 旁的下载按钮即可一键安装。
 
