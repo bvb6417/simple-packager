@@ -15,8 +15,8 @@ Windows 下的 Python 图形化打包工具：用 `uv` 在干净的隔离环境�
 
 前往 [Releases](https://github.com/bvb6417/simple-packager/releases) 页面下载打包好的可执行文件：
 
-- **`SimplePackager-v2.7.0-standalone.exe`**（独立版，约 11.3 MB）：内置 Python 与 `tkwebui`，无需配置 Python 环境，下载双击即可运行。
-- **`SimplePackager-v2.7.0-launcher-source.exe`**（启动器外置资源版，约 136 KB）：内置项目全部 Python 源码，调用本机 PATH 中的 `python.exe` 运行（需本机已执行 `python -m pip install tkwebui>=0.3.2`）。
+- **`SimplePackager-v2.7.1-standalone.exe`**（独立版，约 11.3 MB）：内置 Python 与 `tkwebui`，无需配置 Python 环境，下载双击即可运行。
+- **`SimplePackager-v2.7.1-launcher-source.exe`**（启动器外置资源版，约 140 KB）：内置项目全部 Python 源码，调用本机 PATH 中的 `python.exe` 运行（需本机已执行 `python -m pip install tkwebui>=0.3.2`）。
 
 ### 方式二：从源码运行
 

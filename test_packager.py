@@ -284,6 +284,83 @@ raise SystemExit(main(['preview', sys.argv[1], '--no-config', '--json']))
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual((source / "result.txt").read_text(), "42 argument")
 
+    @unittest.skipUnless(os.name == "nt", "Windows launcher taskbar icon")
+    def test_launcher_taskbar_icon_preserves_custom_titlebar(self):
+        try:
+            import tkwebui  # noqa: F401
+        except ImportError:
+            self.skipTest("tkwebui not installed")
+
+        (self.project / "chrome_app.py").write_text(
+            "import ctypes, json\n"
+            "from ctypes import wintypes\n"
+            "import tkinter as tk\n"
+            "from tkinter import ttk\n"
+            "import tkwebui\n"
+            "u = ctypes.WinDLL('user32', use_last_error=True)\n"
+            "gdi = ctypes.WinDLL('gdi32', use_last_error=True)\n"
+            "u.GetWindowDC.argtypes = [wintypes.HWND]; u.GetWindowDC.restype = wintypes.HDC\n"
+            "u.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]\n"
+            "gdi.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]; gdi.GetPixel.restype = wintypes.DWORD\n"
+            "get_cls = getattr(u, 'GetClassLongPtrW', u.GetClassLongW)\n"
+            "get_cls.argtypes = [wintypes.HWND, ctypes.c_int]; get_cls.restype = ctypes.c_void_p\n"
+            "u.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]\n"
+            "u.SendMessageW.restype = ctypes.c_ssize_t\n"
+            "tkwebui.enable_dpi_awareness()\n"
+            "root = tk.Tk()\n"
+            "root.title('Custom Chrome Icon Test')\n"
+            "root.geometry('520x300+100+100')\n"
+            "tkwebui.apply_theme(root, font_size=9)\n"
+            "tb = ttk.Frame(root, padding=(10, 5, 10, 0))\n"
+            "tb.pack(fill='x')\n"
+            "chrome = tkwebui.WindowChrome(root, tb, drag_widgets=(tb,))\n"
+            "initial = [None]\n"
+            "def wait_attach():\n"
+            "    if not chrome.attached:\n"
+            "        root.after(20, wait_attach)\n"
+            "        return\n"
+            "    root.update()\n"
+            "    initial[0] = get_cls(chrome.hwnd, -14)\n"
+            "    root.after(450, finish)\n"
+            "def finish():\n"
+            "    root.update()\n"
+            "    dc = u.GetWindowDC(chrome.hwnd)\n"
+            "    bad = []\n"
+            "    for y in (4, 12, 20):\n"
+            "        for x in range(10, 320, 20):\n"
+            "            c = gdi.GetPixel(dc, x, y)\n"
+            "            rgb = (c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF)\n"
+            "            if rgb != (255, 255, 255):\n"
+            "                bad.append((x, y, rgb))\n"
+            "    u.ReleaseDC(chrome.hwnd, dc)\n"
+            "    print(json.dumps({\n"
+            "        'initial': initial[0],\n"
+            "        'hicon': get_cls(chrome.hwnd, -14),\n"
+            "        'hiconsm': get_cls(chrome.hwnd, -34),\n"
+            "        'wm_big': u.SendMessageW(chrome.hwnd, 0x007F, 1, 0),\n"
+            "        'bad': bad,\n"
+            "    }), flush=True)\n"
+            "    root.destroy()\n"
+            "root.after(50, wait_attach)\n"
+            "root.mainloop()\n",
+            encoding="utf-8",
+        )
+        args = ("--mode", "entry", "--entry", "chrome_app.py", "--name", "chrome_test",
+                "--output", ".", "--windowed", "--icon-text", "📦", "--no-config", "--json")
+        build = self.call("build", self.project, *args)
+        self.assertEqual(build.returncode, 0, build.stderr)
+        output = Path(json.loads(build.stdout)["output"])
+        env = {**os.environ, "LOCALAPPDATA": self.temp.name}
+        run = subprocess.run([sys.executable, str(output)], cwd=self.temp.name,
+                             env=env, text=True, encoding="utf-8", capture_output=True, timeout=15)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        data = json.loads(run.stdout)
+        self.assertTrue(data["hicon"])
+        self.assertTrue(data["hiconsm"])
+        self.assertNotEqual(data["hicon"], data["initial"])
+        self.assertEqual(data["wm_big"], 0)
+        self.assertEqual(data["bad"], [])
+
     def test_independent_build_always_isolates(self):
         app = self.controller()
         req = self.project / "requirements.txt"

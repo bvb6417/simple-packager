@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from system_python_launcher import PROJECT_SETTINGS_DIRECTORY
 
 APP_NAME = "UV Python 精简打包工具"
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.7.1"
 DEFAULT_PYINSTALLER_VERSION = "6.21.0"
 LEGACY_SYSTEM_PYTHON_PACKAGE_MODE = "系统 Python 启动器（单文件，不内置环境）"
 SYSTEM_PYTHON_PACKAGE_MODE = "系统 Python 启动器（完整项目，内置资源）"

@@ -114,6 +114,13 @@ def text_hint(widget, message):
 
 
 class PackagerChrome(tkwebui.WindowChrome):
+    def window_proc(self, hwnd, message, wparam, lparam):
+        # Block legacy non-DWM titlebar/frame painting (WM_NCUAHDRAWCAPTION /
+        # WM_NCUAHDRAWFRAME) triggered by DefWindowProc on WM_SETICON/WM_SETTEXT.
+        if message in (0x00AE, 0x00AF):
+            return 0
+        return super().window_proc(hwnd, message, wparam, lparam)
+
     def close(self):
         # Cancellation of the close dialog must leave the drag handlers attached.
         # PackagerApp.destroy detaches the chrome after closing is confirmed.

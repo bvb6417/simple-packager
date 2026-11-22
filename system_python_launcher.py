@@ -240,6 +240,7 @@ DEFAULT_SKIP_DIRS = {
 }
 
 BOOTSTRAP_SOURCE = r'''import ctypes
+from ctypes import wintypes
 import importlib.machinery
 import json
 import os
@@ -247,6 +248,7 @@ import re
 import runpy
 import shutil
 import sys
+import threading
 import traceback
 import zipfile
 
@@ -265,6 +267,131 @@ def show_error(title, message, console):
         ctypes.windll.user32.MessageBoxW(None, message, title, 0x10)
     except Exception:
         pass
+
+
+def install_taskbar_icon(archive_path, title):
+    """Use the launcher EXE icon for windows created by this Python process."""
+    if os.name != "nt":
+        return lambda: None
+
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+    set_app_id = shell32.SetCurrentProcessExplicitAppUserModelID
+    set_app_id.argtypes = [ctypes.c_wchar_p]
+    set_app_id.restype = ctypes.c_long
+    app_id = "PySimplePackager." + safe_cache_component(title)[:96]
+    set_app_id(app_id)
+
+    large = ctypes.c_void_p()
+    small = ctypes.c_void_p()
+    extract_icon = shell32.ExtractIconExW
+    extract_icon.argtypes = [
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        wintypes.UINT,
+    ]
+    extract_icon.restype = wintypes.UINT
+    if not extract_icon(archive_path, 0, ctypes.byref(large), ctypes.byref(small), 1):
+        return lambda: None
+
+    large_handle = large.value or small.value
+    small_handle = small.value or large.value
+    if not large_handle and not small_handle:
+        return lambda: None
+
+    get_window_pid = user32.GetWindowThreadProcessId
+    get_window_pid.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    get_window_pid.restype = wintypes.DWORD
+    is_window = user32.IsWindow
+    is_window.argtypes = [wintypes.HWND]
+    is_window.restype = wintypes.BOOL
+    is_window_visible = user32.IsWindowVisible
+    is_window_visible.argtypes = [wintypes.HWND]
+    is_window_visible.restype = wintypes.BOOL
+    get_window = user32.GetWindow
+    get_window.argtypes = [wintypes.HWND, wintypes.UINT]
+    get_window.restype = wintypes.HWND
+    get_window_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+    get_window_long.argtypes = [wintypes.HWND, ctypes.c_int]
+    get_window_long.restype = ctypes.c_ssize_t
+    get_class_long = getattr(user32, "GetClassLongPtrW", user32.GetClassLongW)
+    get_class_long.argtypes = [wintypes.HWND, ctypes.c_int]
+    get_class_long.restype = ctypes.c_void_p
+    set_class_long = getattr(user32, "SetClassLongPtrW", user32.SetClassLongW)
+    set_class_long.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+    set_class_long.restype = ctypes.c_void_p
+    enum_windows = user32.EnumWindows
+    enum_proc_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    enum_windows.argtypes = [enum_proc_type, wintypes.LPARAM]
+    enum_windows.restype = wintypes.BOOL
+    destroy_icon = user32.DestroyIcon
+    destroy_icon.argtypes = [ctypes.c_void_p]
+    destroy_icon.restype = wintypes.BOOL
+
+    process_id = os.getpid()
+    stop_event = threading.Event()
+    applied_windows = set()
+
+    def apply_icon():
+        if applied_windows:
+            applied_windows.intersection_update(
+                handle for handle in applied_windows if is_window(handle)
+            )
+
+        def callback(hwnd, _lparam):
+            owner_pid = wintypes.DWORD()
+            get_window_pid(hwnd, ctypes.byref(owner_pid))
+            if owner_pid.value != process_id:
+                return True
+            if hwnd in applied_windows or not is_window_visible(hwnd):
+                return True
+            ex_style = get_window_long(hwnd, -20)
+            # Skip floating tool/popup windows; target top-level taskbar windows.
+            if ex_style & 0x00000080:
+                return True
+            if get_window(hwnd, 4) and not (ex_style & 0x00040000):
+                return True
+            # Use class icons (GCLP_HICON / GCLP_HICONSM) instead of WM_SETICON:
+            # DefWindowProc handles WM_SETICON via WM_NCUAHDRAWCAPTION, which paints
+            # a classic OS title bar over custom-chrome (WM_NCCALCSIZE) windows.
+            if large_handle and get_class_long(hwnd, -14) != large_handle:
+                set_class_long(hwnd, -14, large_handle)
+            if small_handle and get_class_long(hwnd, -34) != small_handle:
+                set_class_long(hwnd, -34, small_handle)
+            applied_windows.add(hwnd)
+            return True
+
+        enum_windows(enum_proc_type(callback), 0)
+
+    def worker():
+        while not stop_event.is_set():
+            try:
+                apply_icon()
+            except Exception:
+                pass
+            stop_event.wait(0.15)
+
+    thread = threading.Thread(target=worker, name="taskbar-icon", daemon=True)
+    thread.start()
+
+    def cleanup():
+        stop_event.set()
+        thread.join(timeout=1.0)
+        handles = {large_handle, small_handle}
+        for handle in handles:
+            if handle:
+                try:
+                    destroy_icon(handle)
+                except Exception:
+                    pass
+
+    return cleanup
 
 
 def safe_cache_component(value):
@@ -445,6 +572,7 @@ def main():
 
     console = bool(config.get("console"))
     title = config.get("title") or "Python 程序"
+    cleanup_taskbar_icon = install_taskbar_icon(archive_path, title)
     try:
         launcher_dir = os.path.dirname(archive_path)
         os.environ["SYSTEM_PYTHON_LAUNCHER_DIR"] = launcher_dir
@@ -488,6 +616,8 @@ def main():
         detail = traceback.format_exc()
         show_error(title, "程序运行失败：\n\n{}".format(detail[-5000:]), console)
         return 1
+    finally:
+        cleanup_taskbar_icon()
 
 
 if __name__ == "__main__":
